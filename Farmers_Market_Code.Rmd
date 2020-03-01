@@ -1,0 +1,167 @@
+---
+title: "Project1"
+author: "Saju Rajagopal"
+date: "15/02/2020"
+output: html_document
+---
+
+```{r}
+library(dplyr)
+library(ggplot2)
+library(treemapify)
+library(maps)
+library(reshape2)
+library(lubridate)
+library(tidyr)
+library(gridExtra)
+library(ggthemes)
+fmarket <- read.csv("~/fmarket.csv", na.strings="", stringsAsFactors=FALSE)
+```
+
+
+
+```{r}
+#Spread of Farmers' Market across the U.S
+
+us_states <- map_data("state")
+
+state <- as.data.frame(table(fmarket$State))
+colnames(state)[1]<- "region"
+state$region <- tolower(state$region)
+state <- left_join(us_states,state)
+
+dist <- ggplot(data = state,
+             mapping = aes(x = long, y = lat, group = group, fill = Freq))+
+    geom_polygon(color = "gray90", size = 0.1) +
+    coord_map(projection = "albers", lat0 = 39, lat1 = 45) +
+    scale_fill_continuous(low="white", high="darkgreen") + 
+    labs(title = "Distribution of Farmers' Market across U.S") +
+    theme_map() + labs(fill = "count")+
+  ggsave("Map.png", dpi = 1200)
+dist
+```
+
+
+
+```{r}
+# Food - All states proucing max product
+food <- fmarket[, c(11,29:50)]
+food[food=="Y"] <- "1"
+food[food =="N"] <- "0"
+library(reshape2)
+food1 <- melt(food, id.vars = "State", na.rm = TRUE)
+food1 <- food1[!(food1$value=="-"),]
+food1 <- transform(food1, value = as.numeric(value))
+food1 %>%
+  group_by(State,variable) %>%
+  summarise(count = sum(value)) %>%
+  ungroup() %>%
+  group_by(State) %>%
+  filter(count == max(count)) %>%
+  filter(State != "Virgin Islands") %>%
+  ggplot(aes(x=State, y= count, fill=variable))+ geom_bar(stat="identity")+ coord_flip()+ ggtitle("Most Available Product as per States") + xlab("States") + ylab("No. of Farmer Market") + labs(fill="Product Type")+ theme(axis.title = element_text(size=14), axis.text.x = element_text(size=14), axis.text.y = element_text(size=14), legend.title = element_text(size=14)) + ggsave("State_product.png", dpi = 1200)
+
+```
+
+
+```{r}
+# Food - max product in all over U.S
+food1 %>%
+  group_by(variable) %>%
+  summarise(count = sum(value)) %>%
+  arrange(desc(count)) %>%
+  ggplot(aes(x=count, y=reorder(variable, count)))+
+  geom_point(color="#3b5998") + 
+  ggtitle("Total number of Farmers Market in U.S selling the Product") + xlab("No. of Farmers Market") + ylab("Product Type") + theme(axis.text.x = element_text(size=14), axis.text.y = element_text(size=14)) + theme_bw() + theme(plot.title = element_text(hjust = 0.5))+ ggsave("Product.png", dpi = 1200)
+
+```
+
+
+```{r}
+# payment
+payment <- fmarket[, c(1,24:28)]
+payment[payment=="Y"] <- "1"
+payment[payment =="N"] <- "0"
+payment1 <- melt(payment, id.vars="FMID", na.rm = TRUE)
+payment1 <- payment1[!(payment1$value=="-"),]
+payment1 <- transform(payment1, value = as.numeric(value))
+payment1 %>%
+  group_by(variable)%>%
+  summarise(total=sum(value)) %>%
+  ggplot(aes(x="", y=total, fill=variable)) +
+  geom_bar(stat="identity", width=1, color="white") +
+  coord_polar("y", start=0) +
+  geom_text(aes(label = paste0(round((total/sum(total))*100), "%")), position = position_stack(vjust = 0.5)) +
+  scale_fill_manual(values=c("#55DDE0", "#33658A", "#2F4858", "#F6AE2D", "#F26419")) +
+  labs(x = NULL, y = NULL, fill = NULL, title = "Distribution of Payment System across U.S") +
+  theme_classic() + theme(axis.line = element_blank(),
+          axis.text = element_blank(),
+          axis.ticks = element_blank(),
+          plot.title = element_text(hjust = 0.5, color = "#666666")) +
+  ggsave("Payment.png", dpi = 1200)
+```
+
+```{r}
+# Food distribution in California
+cfood <- select(fmarket, c("city", "County", "State", "Organic", "Bakedgoods", "Cheese", "Crafts", "Flowers", "Eggs", "Seafood", "Herbs", "Vegetables", "Honey", "Jams", "Maple", "Meat", "Nursery", "Nuts", "Plants", "Poultry", "Prepared", "Soap", "Trees", "Wine", "Coffee"))
+cfood[cfood=="Y"] <- "1"
+cfood[cfood =="N"] <- "0"
+library(reshape2)
+cfood1 <- melt(cfood, id.vars = c("city","County","State"), na.rm = TRUE)
+cfood1 <- cfood1[!(cfood1$value=="-"),]
+cfood1 <- transform(cfood1, value = as.numeric(value))
+cfood2 <- cfood1 %>%
+  filter(State == "California")%>%
+  group_by(variable) %>%
+  summarise(count = sum(value))
+labl <- c("Organic", "Bakedgoods", "Cheese", "Crafts", "Flowers", "Eggs", "Seafood", "Herbs", "Vegetables", "Honey", "Jams", "Maple", "Meat", "Nursery", "Nuts", "Plants", "Poultry", "Prepared", "Soap", "Trees", "Wine", "Coffee")
+per <- round(cfood2$count/sum(cfood2$count)*100)
+labl <- paste(labl, per)
+labl <- paste(labl,"%",sep="")
+  ggplot(cfood2, aes(area=cfood2$count, fill=cfood2$variable, label=labl))+ geom_treemap() + 
+    geom_treemap_text( colour = "white", place = "centre") +
+    scale_fill_discrete(name = "Food Item") +
+    ggsave("treemap.png", height = 9, width = 12, dpi=1200)
+```
+
+
+
+```{r}
+# Operating days 
+day0 <- fmarket[, c(1,11,14)]
+day0$Season1Time = substr(day0$Season1Time,1,nchar(day0$Season1Time)-1)
+day0 <- separate_rows(day0,Season1Time,sep=";")
+day0$Season1Time = substr(day0$Season1Time,1,3)
+days <- day0[!is.na(day0$Season1Time), ]
+days[,3] = toupper(days[,3])
+days$Season1Time <- factor(days$Season1Time, levels = c("MON", "TUE", "WED", "THU", "FRI", "SAT", "SUN"))
+ggplot(days, aes(x = Season1Time, fill= Season1Time)) + 
+	geom_bar() +
+  geom_text(stat='count', aes(label=..count..), vjust=-0.5)+
+  xlab("Days of the week")+ ylab("Number of farmers matrket Open")+
+  ggtitle("Farmers Market operating days") +
+  theme(plot.title = element_text(hjust = 0.5), text = element_text(size=14), axis.title.x = element_text(size=14), axis.title.y = element_text(size=14))+
+  theme_bw() + theme(legend.position = "none")+
+  ggsave("Days.png", dpi = 1200)
+```
+
+
+
+
+```{r}
+# External Insights
+applications <- read.csv("C:/Users/Riju/Downloads/applications.csv", na.strings="", stringsAsFactors=FALSE)
+colnames(applications)[1:3] <- c("Application_type","No.of_Requests","No.of_Awards")
+a <- melt(applications[,c('Application_type','No.of_Requests','No.of_Awards')],id.vars = 1)
+a$value <- as.numeric(a$value)
+
+ggplot(a,aes(x = Application_type,y = value, fill = variable)) + coord_flip()+
+    geom_bar(stat = "identity", width=0.75, color = "grey40",  position = "dodge") +
+     ggtitle("Applications Awarded Grants (2008-2015)") +
+   geom_text(aes(label=value), size=3.5,color="black", position=position_dodge(width = 0.75), hjust=1.5, vjust=0.4) +
+  theme_bw() + theme(axis.text.x = element_text(size = 14, angle=0))+
+  theme(axis.line = element_blank(), axis.text.x = element_blank(), axis.title.x = element_blank(),axis.title.y = element_blank(),axis.ticks.x = element_blank(), legend.position = "bottom", legend.title = element_blank(), plot.title = element_text(hjust = 0.5)) + theme(plot.title = element_text(size = 14))+
+  scale_y_continuous(trans = 'log10')+
+ggsave("grants.png", dpi = 1200)
+```
+
